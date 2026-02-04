@@ -29,9 +29,14 @@ export default function RootLayout({
       >
         {children}
         <div className="fixed bottom-4 w-full text-center z-50 pointer-events-none mix-blend-difference">
-          <p className="text-[10px] uppercase tracking-widest text-white/20 font-mono">
-            Built by Nieraj • ElevexSocials
-          </p>
+          <div className="flex flex-col gap-1 items-center justify-center">
+            <p className="text-[10px] uppercase tracking-widest text-white/20 font-mono">
+              Website by Nieraj S
+            </p>
+            <p className="text-[8px] uppercase tracking-wider text-white/15 font-mono">
+              Team: Kavishnu G | Likhith sai N
+            </p>
+          </div>
         </div>
       </body>
     </html>
