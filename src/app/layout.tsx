@@ -27,11 +27,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
-        <div className="fixed bottom-4 w-full text-center z-50 pointer-events-none mix-blend-difference">
-          <p className="text-[10px] uppercase tracking-widest text-white/20 font-mono">
-            Built by Nieraj • ElevexSocials
-          </p>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="px-6 py-2 rounded-full bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] flex items-center justify-center">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-white/50 font-medium font-geist-mono drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]">
+              Built by Nieraj <span className="mx-2 text-white/20">•</span> ElevexSocials
+            </p>
+          </div>
         </div>
       </body>
     </html>
