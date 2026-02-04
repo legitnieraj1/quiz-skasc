@@ -10,6 +10,7 @@ export default function AdminPage() {
     const [players, setPlayers] = useState<{ count: number, lastPlayer?: string }>({ count: 0 });
     const [isConnected, setIsConnected] = useState(false);
     const [gameState, setGameState] = useState("WAITING");
+    const [recoverableCode, setRecoverableCode] = useState<string | null>(null);
 
     // Additional state for question management
     const [questions, setQuestions] = useState<any[]>([]);
@@ -32,19 +33,10 @@ export default function AdminPage() {
         function onConnect() {
             setIsConnected(true);
 
-            // Auto-rejoin if we have a room code in local storage or state
+            // Check for saved session but DO NOT auto-rejoin
             const savedCode = localStorage.getItem("hostRoomCode");
             if (savedCode) {
-                socket.emit("host_rejoin", { code: savedCode }, (res: any) => {
-                    if (res.success) {
-                        setRoomCode(savedCode);
-                        if (res.questions) {
-                            setQuestions(res.questions);
-                        }
-                    } else {
-                        localStorage.removeItem("hostRoomCode");
-                    }
-                });
+                setRecoverableCode(savedCode);
             }
         }
 
@@ -333,24 +325,50 @@ export default function AdminPage() {
                         Create New Room
                     </button>
 
-                    <div className="border-t border-gray-700 pt-6 mt-6 w-full max-w-xs text-center">
-                        <p className="mb-2 text-gray-400">Recover Session</p>
-                        <form onSubmit={(e) => {
-                            e.preventDefault();
-                            const target = (e.target as any).code.value.toUpperCase();
-                            socket.emit("host_rejoin", { code: target }, (res: any) => {
-                                if (res.success) {
-                                    setRoomCode(target);
-                                    localStorage.setItem("hostRoomCode", target);
-                                    if (res.questions) setQuestions(res.questions);
-                                } else {
-                                    alert("Session not found");
-                                }
-                            });
-                        }}>
-                            <input name="code" placeholder="ROOM CODE" className="px-4 py-2 bg-gray-800 rounded mb-2 w-full text-center" />
-                            <button type="submit" className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded">Recover</button>
-                        </form>
+                    <div className="border-t border-gray-700 pt-6 mt-6 w-full max-w-xs text-center flex flex-col gap-4">
+                        {recoverableCode && (
+                            <div className="bg-gray-800 p-4 rounded-lg border border-yellow-600/50 animate-fade-in">
+                                <p className="text-yellow-400 text-sm mb-2">Previous Session Found</p>
+                                <div className="text-2xl font-mono font-bold mb-3">{recoverableCode}</div>
+                                <button
+                                    onClick={() => {
+                                        socket.emit("host_rejoin", { code: recoverableCode }, (res: any) => {
+                                            if (res.success) {
+                                                setRoomCode(recoverableCode);
+                                                if (res.questions) setQuestions(res.questions);
+                                            } else {
+                                                alert("Session expired or invalid");
+                                                localStorage.removeItem("hostRoomCode");
+                                                setRecoverableCode(null);
+                                            }
+                                        });
+                                    }}
+                                    className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-500 rounded font-bold transition"
+                                >
+                                    Resume Session
+                                </button>
+                            </div>
+                        )}
+
+                        <div>
+                            <p className="mb-2 text-gray-400 text-xs uppercase tracking-widest">Manual Recovery</p>
+                            <form onSubmit={(e) => {
+                                e.preventDefault();
+                                const target = (e.target as any).code.value.toUpperCase();
+                                socket.emit("host_rejoin", { code: target }, (res: any) => {
+                                    if (res.success) {
+                                        setRoomCode(target);
+                                        localStorage.setItem("hostRoomCode", target);
+                                        if (res.questions) setQuestions(res.questions);
+                                    } else {
+                                        alert("Session not found");
+                                    }
+                                });
+                            }}>
+                                <input name="code" placeholder="ENTER CODE" className="px-4 py-2 bg-gray-800 rounded mb-2 w-full text-center border border-gray-700 focus:border-purple-500 outline-none transition" />
+                                <button type="submit" className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm font-medium">Recover Manually</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             ) : (
