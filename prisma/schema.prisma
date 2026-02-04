@@ -3,9 +3,32 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
+
+model Quiz {
+  id          String     @id @default(cuid())
+  title       String
+  roomCode    String     @unique // The code used to join
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  status      String     @default("WAITING") // WAITING, ACTIVE, COMPLETED
+  questions   Question[]
+}
+
+model Question {
+  id            String   @id @default(cuid())
+  text          String
+  options       String   // JSON string of options array: ["A) ...", "B) ..."]
+  correctAnswer String   // The correct option text or index
+  order         Int      // To maintain sequence
+  quizId        String
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+// Keeping original GameSession for historical records if needed, or we can merge logic.
+// For now, let's keep GameSession as a completed run record, and Quiz as the "Configurable Room".
 
 model GameSession {
   id        String    @id @default(uuid())
@@ -25,11 +48,11 @@ model PlayerResult {
   game      GameSession @relation(fields: [gameId], references: [id])
   
   username  String
-  socketId  String // Original socket ID for reference
+  socketId  String 
   
   score     Int
   timeTaken Int // in ms
-  rank      Int?  // Final rank position
+  rank      Int?  
   
   createdAt DateTime @default(now())
 }

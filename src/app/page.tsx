@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react"; // Added useEffect
 import { AntiGravityCanvas } from "@/components/ui/particle-effect-for-hero";
@@ -22,10 +22,7 @@ export default function Home() { // Renamed back to Home as per original file st
         }
     };
 
-    // Added createRoom for consistency with the provided snippet's intent, though not directly used in the original structure
-    const createRoom = () => {
-        router.push("/admin");
-    };
+
 
     return (
         <div className="relative min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-4 overflow-hidden">
@@ -56,21 +53,7 @@ export default function Home() { // Renamed back to Home as per original file st
                         </button>
                     </form>
 
-                    <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-gray-700"></div>
-                        </div>
-                        <div className="relative flex justify-center text-sm">
-                            <span className="px-2 bg-transparent text-gray-400">Or</span>
-                        </div>
-                    </div>
 
-                    <Link
-                        href="/admin"
-                        className="block w-full text-center px-4 py-3 bg-gray-800/80 hover:bg-gray-700 rounded-lg font-semibold transition-all border border-gray-700 hover:border-gray-600"
-                    >
-                        Host a Quiz
-                    </Link>
                 </div>
             </div>
         </div>

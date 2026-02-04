@@ -20,6 +20,7 @@ export default function AdminPage() {
         timer: 20,
         points: 100
     });
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isEditing, setIsEditing] = useState(false);
 
     const [leaderboardData, setLeaderboardData] = useState<any>(null); // Store full leaderboard data
@@ -29,6 +30,21 @@ export default function AdminPage() {
 
         function onConnect() {
             setIsConnected(true);
+
+            // Auto-rejoin if we have a room code in local storage or state
+            const savedCode = localStorage.getItem("hostRoomCode");
+            if (savedCode) {
+                socket.emit("host_rejoin", { code: savedCode }, (res: any) => {
+                    if (res.success) {
+                        setRoomCode(savedCode);
+                        if (res.questions) {
+                            setQuestions(res.questions);
+                        }
+                    } else {
+                        localStorage.removeItem("hostRoomCode");
+                    }
+                });
+            }
         }
 
         function onDisconnect() {
@@ -101,6 +117,7 @@ export default function AdminPage() {
     const createRoom = () => {
         socket.emit("create_room", (response: { code: string }) => {
             setRoomCode(response.code);
+            localStorage.setItem("hostRoomCode", response.code);
         });
     };
 
@@ -110,11 +127,72 @@ export default function AdminPage() {
             ...newQuestion,
             correctAnswer: newQuestion.correctAnswer || newQuestion.options[0]
         };
-        const updated = [...questions, q];
+
+        let updated;
+        if (editingIndex !== null) {
+            // Edit Mode
+            updated = [...questions];
+            updated[editingIndex] = { ...q, id: questions[editingIndex].id }; // Preserve ID
+        } else {
+            // Add Mode
+            updated = [...questions, q];
+        }
+
         setQuestions(updated);
         socket.emit("admin_update_questions", { code: roomCode, questions: updated });
         setNewQuestion({ text: "", options: ["", "", "", ""], correctAnswer: "", timer: 20, points: 100 });
+        setEditingIndex(null);
         setIsEditing(false);
+    };
+
+    const editQuestion = (index: number) => {
+        const q = questions[index];
+        setNewQuestion({
+            text: q.text,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            timer: q.timer,
+            points: q.points || 100
+        });
+        setEditingIndex(index);
+        setIsEditing(true);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch("/api/admin/parse-upload", {
+                method: "POST",
+                body: formData,
+            });
+            const data = await res.json();
+            if (data.questions) {
+                // Map parsed questions to internal format
+                const newQs = data.questions.map((q: any, i: number) => ({
+                    id: `q${questions.length + i + 1}`,
+                    text: q.text,
+                    options: q.options,
+                    correctAnswer: q.correctAnswer,
+                    timer: 20, // Default timer
+                    points: 100 // Default points
+                }));
+
+                const updated = [...questions, ...newQs];
+                setQuestions(updated);
+                if (roomCode) {
+                    socket.emit("admin_update_questions", { code: roomCode, questions: updated });
+                }
+                alert(`Successfully added ${newQs.length} questions!`);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to upload/parse file.");
+        }
     };
 
     const updateOption = (idx: number, val: string) => {
@@ -234,6 +312,26 @@ export default function AdminPage() {
                     >
                         Create New Room
                     </button>
+
+                    <div className="border-t border-gray-700 pt-6 mt-6 w-full max-w-xs text-center">
+                        <p className="mb-2 text-gray-400">Recover Session</p>
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const target = (e.target as any).code.value.toUpperCase();
+                            socket.emit("host_rejoin", { code: target }, (res: any) => {
+                                if (res.success) {
+                                    setRoomCode(target);
+                                    localStorage.setItem("hostRoomCode", target);
+                                    if (res.questions) setQuestions(res.questions);
+                                } else {
+                                    alert("Session not found");
+                                }
+                            });
+                        }}>
+                            <input name="code" placeholder="ROOM CODE" className="px-4 py-2 bg-gray-800 rounded mb-2 w-full text-center" />
+                            <button type="submit" className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded">Recover</button>
+                        </form>
+                    </div>
                 </div>
             ) : (
                 <div className="max-w-4xl mx-auto space-y-8">
@@ -252,15 +350,22 @@ export default function AdminPage() {
 
                     {/* Question List */}
                     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                        <h2 className="text-xl font-bold mb-4 flex justify-between">
+                        <h2 className="text-xl font-bold mb-4 flex justify-between items-center">
                             <span>Questions ({questions.length})</span>
-                            <button onClick={() => setIsEditing(!isEditing)} className="text-sm text-purple-400 hover:text-purple-300">
-                                {isEditing ? "Cancel" : "+ Add Question"}
-                            </button>
+                            <div className="flex gap-4">
+                                <label className="cursor-pointer text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                                    <span>📄 Upload Text File</span>
+                                    <input type="file" accept=".txt" className="hidden" onChange={handleFileUpload} />
+                                </label>
+                                <button onClick={() => setIsEditing(!isEditing)} className="text-sm text-purple-400 hover:text-purple-300">
+                                    {isEditing ? "Cancel" : "+ Add Question"}
+                                </button>
+                            </div>
                         </h2>
 
                         {isEditing && (
                             <div className="bg-gray-900 p-4 rounded-lg mb-6 border border-gray-700 space-y-4">
+                                <h3 className="text-lg font-bold text-purple-400">{editingIndex !== null ? "Edit Question" : "New Question"}</h3>
                                 <input
                                     className="w-full bg-gray-800 p-3 rounded border border-gray-600"
                                     placeholder="Question Text"
@@ -297,7 +402,7 @@ export default function AdminPage() {
                                         onChange={e => setNewQuestion({ ...newQuestion, timer: parseInt(e.target.value) })}
                                     />
                                     <button onClick={addQuestion} className="px-4 py-2 bg-green-600 rounded hover:bg-green-500 font-bold ml-auto">
-                                        Save Question
+                                        {editingIndex !== null ? "Update Question" : "Save Question"}
                                     </button>
                                 </div>
                             </div>
@@ -305,9 +410,17 @@ export default function AdminPage() {
 
                         <div className="space-y-2">
                             {questions.map((q, i) => (
-                                <div key={i} className="p-3 bg-gray-700/50 rounded flex justify-between items-center">
+                                <div key={i} className="p-3 bg-gray-700/50 rounded flex justify-between items-center hover:bg-gray-700 transition group">
                                     <span className="truncate flex-1 font-medium">{i + 1}. {q.text}</span>
-                                    <span className="text-sm text-gray-400 ml-4">{q.timer}s</span>
+                                    <div className="flex items-center gap-4">
+                                        <span className="text-sm text-gray-400">{q.timer}s</span>
+                                        <button
+                                            onClick={() => editQuestion(i)}
+                                            className="opacity-0 group-hover:opacity-100 text-sm text-blue-400 hover:text-blue-300 transition"
+                                        >
+                                            ✏️ Edit
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                             {questions.length === 0 && !isEditing && (
@@ -319,10 +432,12 @@ export default function AdminPage() {
                     {/* Start Button */}
                     <button
                         onClick={startGame}
-                        disabled={players.count === 0 || questions.length === 0}
-                        className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg font-bold text-xl transition shadow-lg shadow-purple-900/50"
+                        // Disabled only if no questions. If no players, we allow (maybe host testing), or just show logic in startGame check.
+                        disabled={questions.length === 0}
+                        className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg font-bold text-xl transition shadow-lg shadow-purple-900/50 relative overflow-hidden"
                     >
-                        Start Quiz
+                        <span className="relative z-10">{players.count === 0 ? "Wait for Players (or Click to Start Anyway)" : "Start Quiz"}</span>
+                        {players.count === 0 && <div className="absolute inset-0 bg-black/20 z-0"></div>}
                     </button>
                 </div>
             )}

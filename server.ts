@@ -43,22 +43,37 @@ app.prepare().then(() => {
     io.on("connection", (socket) => {
         console.log("Client connected:", socket.id);
 
-        socket.on("create_room", (callback) => {
-            const code = gameManager.createRoom(socket.id);
+        socket.on("create_room", async (callback) => {
+            const code = await gameManager.createRoom(socket.id);
             socket.join(code);
             callback({ code });
         });
 
-        socket.on("join_room", ({ code, username }: { code: string, username: string }, callback: (res: any) => void) => {
+        socket.on("join_room", async ({ code, username }: { code: string, username: string }, callback: (res: any) => void) => {
+            // Try to load room from DB if not in memory
+            const room = gameManager.getRoom(code);
+            if (!room) {
+                await gameManager.loadRoom(code);
+            }
+
             const success = gameManager.joinRoom(code, socket.id, username);
             if (success) {
                 socket.join(code);
-                const room = gameManager.getRoom(code);
-                if (room) {
-                    io.to(room.hostId).emit("player_joined", {
-                        count: Object.keys(room.players).length,
-                        lastPlayer: username
-                    });
+                const activeRoom = gameManager.getRoom(code);
+                if (activeRoom) {
+                    // Update hostId if it's empty (restored room)
+                    if (!activeRoom.hostId) {
+                        // NOTE: This logic assumes the first joiner MIGHT be host if we don't have auth.
+                        // But actually 'join_room' is for players.
+                        // We need a separate 'host_rejoin' or we assume players are just players.
+                    }
+
+                    if (activeRoom.hostId) {
+                        io.to(activeRoom.hostId).emit("player_joined", {
+                            count: Object.keys(activeRoom.players).length,
+                            lastPlayer: username
+                        });
+                    }
                 }
                 callback({ success: true });
             } else {
@@ -66,10 +81,35 @@ app.prepare().then(() => {
             }
         });
 
-        socket.on("admin_update_questions", ({ code, questions }) => {
+        // New handler for Host Rejoin
+        socket.on("host_rejoin", async ({ code }: { code: string }, callback) => {
+            // Try to find room
+            let room = gameManager.getRoom(code);
+            if (!room) {
+                room = await gameManager.loadRoom(code);
+            }
+
+            if (room) {
+                // Claim hostship
+                // Security warning: Anyone with code can claim host if hostId is empty?
+                // Since we don't have auth, yes. For this demo, we allow "Reclaim" if hostId is empty.
+                // Or we just overwrite it.
+                room.hostId = socket.id;
+                socket.join(code);
+
+                callback({
+                    success: true,
+                    questions: room.questions
+                });
+            } else {
+                callback({ success: false });
+            }
+        });
+
+        socket.on("admin_update_questions", async ({ code, questions }) => {
             const room = gameManager.getRoom(code);
             if (room && room.hostId === socket.id) {
-                room.questions = questions;
+                await gameManager.updateQuestions(code, questions);
             }
         });
 

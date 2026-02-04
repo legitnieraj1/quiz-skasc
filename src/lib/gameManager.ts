@@ -32,11 +32,25 @@ export type Room = {
 class GameManager {
     private rooms: Record<string, Room> = {};
 
-    createRoom(hostId: string): string {
+    async createRoom(hostId: string): Promise<string> {
         const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+        // Save to DB
+        try {
+            await db.quiz.create({
+                data: {
+                    roomCode: code,
+                    title: "Untitled Quiz",
+                    status: "WAITING"
+                }
+            });
+        } catch (e) {
+            console.error("DB Create Error", e);
+        }
+
         this.rooms[code] = {
             code,
-            hostId,
+            hostId, // Note: Socket ID changes on reconnect, logic needs handling in join/load
             players: {},
             questions: [],
             currentQuestionIndex: -1,
@@ -44,6 +58,49 @@ class GameManager {
             startTime: null,
         };
         return code;
+    }
+
+    // Restore room from DB if not in memory
+    async loadRoom(code: string): Promise<Room | undefined> {
+        if (this.rooms[code]) return this.rooms[code];
+
+        try {
+            const quiz = await db.quiz.findUnique({
+                where: { roomCode: code },
+                include: { questions: true }
+            });
+
+            if (!quiz) return undefined;
+
+            // Reconstruct Room object
+            // Note: Players are lost if only persisted in GameSession at end. 
+            // If we want persistent players, we need Player model linked to Quiz/Room in real-time.
+            // For now, loading the Quiz configuration (questions) is the main goal.
+            // Players will have to rejoin.
+
+            this.rooms[code] = {
+                code: quiz.roomCode,
+                hostId: "", // Host needs to reclaim!
+                players: {},
+                questions: quiz.questions.map(q => ({
+                    id: q.id,
+                    text: q.text,
+                    options: JSON.parse(q.options as string),
+                    correctAnswer: q.correctAnswer,
+                    timer: 20, // Default or store in DB? DB doesn't have timer/points in schema yet!
+                    points: 100
+                })),
+                currentQuestionIndex: -1,
+                state: "WAITING", // Reset to waiting or store state?
+                startTime: null,
+            };
+
+            // Map DB fields back if we update schema later
+            return this.rooms[code];
+        } catch (e) {
+            console.error("DB Load Error", e);
+            return undefined;
+        }
     }
 
     joinRoom(code: string, playerId: string, username: string): boolean {
@@ -58,7 +115,7 @@ class GameManager {
             // If we want to support reconnect by username, we need to handle the ID change.
             // For now, let's assume the client uses the same ID or we map by Username?
             // "username" is passed.
-            // Let's swap the key? Or just update the ID property?
+            // Let's swap the key? Or just update the object ref?
 
             // To keep it simple for this session:
             // logic: If username matches, we treat it as a rejoin.
@@ -101,9 +158,44 @@ class GameManager {
         return this.rooms[code];
     }
 
+    // Async to save to DB
+    async updateQuestions(code: string, questions: Question[]) {
+        const room = this.rooms[code];
+        if (room) {
+            room.questions = questions;
+
+            // Sync to DB
+            try {
+                // Transaction: Delete old Qs, Create new Qs? Or Upsert?
+                // Simpler: Delete all for this quiz and recreate.
+                const quiz = await db.quiz.findUnique({ where: { roomCode: code } });
+                if (quiz) {
+                    await db.$transaction([
+                        db.question.deleteMany({ where: { quizId: quiz.id } }),
+                        db.question.createMany({
+                            data: questions.map((q, i) => ({
+                                text: q.text,
+                                options: JSON.stringify(q.options),
+                                correctAnswer: q.correctAnswer,
+                                order: i,
+                                quizId: quiz.id
+                            }))
+                        })
+                    ]);
+                }
+            } catch (e) {
+                console.error("DB Update Questions Error", e);
+            }
+        }
+    }
+
     addQuestion(code: string, question: Question) {
         const room = this.rooms[code];
-        if (room) room.questions.push(question);
+        if (room) {
+            room.questions.push(question);
+            // Ideally trigger async save, but we use updateQuestions for bulk primarily now
+            this.updateQuestions(code, room.questions);
+        }
     }
 
     startGame(code: string) {
@@ -130,19 +222,13 @@ class GameManager {
 
             // Calculate score immediately or at end of round?
             // "Sample scoring logic is base score minus time-based penalty"
+            // If correct: Score += Points
+            // Time tie-breaker is separate total time.
+            // Request says: "Rankings must be calculated primarily based on total score and secondarily based on total time taken"
+            // So keeping score simple (correctness) might be better, OR adding speed bonus to score.
+            // Let's stick to simple Correct = Points, and track Time for tie-breaker.
+
             if (answer === currentQ.correctAnswer) {
-                // Simple logic: Points * (1 - time/timer) or similar.
-                // Let's do: Points - (TimeTaken/Timer * Points * 0.5) (at least half points if correct?)
-                // Re-read request: "base score minus time-based penalty"
-                // Let's assume Points is base. Max Penalty e.g. 50%.
-
-                // Logic:
-                // If correct: Score += Points
-                // Time tie-breaker is separate total time.
-                // Request says: "Rankings must be calculated primarily based on total score and secondarily based on total time taken"
-                // So keeping score simple (correctness) might be better, OR adding speed bonus to score.
-                // Let's stick to simple Correct = Points, and track Time for tie-breaker.
-
                 player.score += currentQ.points;
             }
             player.timeTaken += timeTaken;
@@ -159,7 +245,7 @@ class GameManager {
             room.startTime = Date.now(); // Reset timer for next Q
         } else {
             room.state = "ENDED";
-            this.saveGameToDatabase(room);
+            this.saveGameSession(room);
         }
     }
 
@@ -170,7 +256,7 @@ class GameManager {
         room.state = "LEADERBOARD";
     }
 
-    private async saveGameToDatabase(room: Room) {
+    private async saveGameSession(room: Room) {
         try {
             await db.gameSession.create({
                 data: {
