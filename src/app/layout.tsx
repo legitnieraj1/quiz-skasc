@@ -28,6 +28,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <div className="fixed bottom-4 w-full text-center z-50 pointer-events-none mix-blend-difference">
+          <p className="text-[10px] uppercase tracking-widest text-white/20 font-mono">
+            Built by Nieraj • ElevexSocials
+          </p>
+        </div>
       </body>
     </html>
   );
