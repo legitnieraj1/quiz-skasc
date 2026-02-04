@@ -27,6 +27,7 @@ export type Room = {
     currentQuestionIndex: number;
     state: GameState;
     startTime: number | null; // For current question to calculate delta
+    autoAdvance?: boolean;
 };
 
 class GameManager {
@@ -215,29 +216,40 @@ class GameManager {
         if (!player) return;
 
         const currentQ = room.questions[room.currentQuestionIndex];
-        // Prevent duplicate submission logic should be enforced by checking players.answers[idx]
 
         if (!player.answers[room.currentQuestionIndex]) {
-            player.answers[room.currentQuestionIndex] = { choice: answer, time: timeTaken };
+            // Calculate precise time taken using server time if available
+            // Fallback to client provided timeTaken if startTime is null (rare)
+            let calculatedTimeTaken = timeTaken;
+            if (room.startTime) {
+                calculatedTimeTaken = (Date.now() - room.startTime) / 1000; // Seconds
+            }
 
-            // Calculate score immediately or at end of round?
-            // "Sample scoring logic is base score minus time-based penalty"
-            // If correct: Score += Points
-            // Time tie-breaker is separate total time.
-            // Request says: "Rankings must be calculated primarily based on total score and secondarily based on total time taken"
-            // So keeping score simple (correctness) might be better, OR adding speed bonus to score.
-            // Let's stick to simple Correct = Points, and track Time for tie-breaker.
+            player.answers[room.currentQuestionIndex] = { choice: answer, time: calculatedTimeTaken };
+
+            // Speed Scoring Formula (Kahoot-like)
+            // Score = Points * (1 - (TimeTaken / TotalTime / 2))
+            // Min Score: 50% points if correct within time.
+            const totalQTime = currentQ.timer; // Seconds
 
             if (answer === currentQ.correctAnswer) {
-                player.score += currentQ.points;
+                // Ensure timeTaken doesn't exceed limit for safe calculation
+                const safeTime = Math.min(calculatedTimeTaken, totalQTime);
+                const speedFactor = 1 - (safeTime / totalQTime / 2);
+                const points = Math.round(currentQ.points * speedFactor);
+
+                player.score += points;
             }
-            player.timeTaken += timeTaken;
+            // Accumulate total raw time (ms) for tie-breaker
+            player.timeTaken += (calculatedTimeTaken * 1000);
         }
     }
 
     nextQuestion(code: string) {
         const room = this.rooms[code];
         if (!room) return;
+
+        this.clearAutoTimer(code);
 
         if (room.currentQuestionIndex < room.questions.length - 1) {
             room.currentQuestionIndex++;
@@ -246,6 +258,31 @@ class GameManager {
         } else {
             room.state = "ENDED";
             this.saveGameSession(room);
+        }
+    }
+
+    // Timer Management for Auto-Advance
+    private timers: Record<string, NodeJS.Timeout> = {};
+
+    setAutoAdvance(code: string, enabled: boolean) {
+        const room = this.rooms[code];
+        if (room) {
+            room.autoAdvance = enabled;
+            if (!enabled) this.clearAutoTimer(code);
+        }
+    }
+
+    scheduleNextQuestion(code: string, delayMs: number, callback: () => void) {
+        this.clearAutoTimer(code);
+        this.timers[code] = setTimeout(() => {
+            callback();
+        }, delayMs);
+    }
+
+    clearAutoTimer(code: string) {
+        if (this.timers[code]) {
+            clearTimeout(this.timers[code]);
+            delete this.timers[code];
         }
     }
 

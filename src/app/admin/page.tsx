@@ -22,6 +22,7 @@ export default function AdminPage() {
     });
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [isAutoMode, setIsAutoMode] = useState(false);
 
     const [leaderboardData, setLeaderboardData] = useState<any>(null); // Store full leaderboard data
 
@@ -223,6 +224,13 @@ export default function AdminPage() {
         }
     };
 
+    const toggleAutoMode = (enabled: boolean) => {
+        if (roomCode) {
+            setIsAutoMode(enabled);
+            socket.emit("toggle_auto_mode", { code: roomCode, enabled });
+        }
+    };
+
     if (!isConnected) {
         return <div className="min-h-screen flex items-center justify-center text-white bg-gray-900">Connecting to server...</div>;
     }
@@ -274,22 +282,34 @@ export default function AdminPage() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <button
-                            onClick={showLeaderboard}
-                            className="py-6 bg-yellow-600 hover:bg-yellow-500 rounded-xl font-bold text-2xl shadow-lg transition transform hover:scale-[1.02] flex flex-col items-center justify-center gap-2"
-                        >
-                            <span>🏆 Show Leaderboard</span>
-                            <span className="text-sm font-normal text-yellow-200 opacity-80">Sync All Players</span>
-                        </button>
+                    <div className="flex flex-col gap-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <button
+                                onClick={showLeaderboard}
+                                className="py-6 bg-yellow-600 hover:bg-yellow-500 rounded-xl font-bold text-2xl shadow-lg transition transform hover:scale-[1.02] flex flex-col items-center justify-center gap-2"
+                            >
+                                <span>🏆 Show Leaderboard</span>
+                                <span className="text-sm font-normal text-yellow-200 opacity-80">Sync All Players</span>
+                            </button>
 
-                        <button
-                            onClick={nextQuestion}
-                            className="py-6 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-2xl shadow-lg transition transform hover:scale-[1.02] flex flex-col items-center justify-center gap-2"
-                        >
-                            <span>Next Question →</span>
-                            <span className="text-sm font-normal text-blue-200 opacity-80">Move Everyone Forward</span>
-                        </button>
+                            <button
+                                onClick={nextQuestion}
+                                className="py-6 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-2xl shadow-lg transition transform hover:scale-[1.02] flex flex-col items-center justify-center gap-2"
+                            >
+                                <span>Next Question →</span>
+                                <span className="text-sm font-normal text-blue-200 opacity-80">Move Everyone Forward</span>
+                            </button>
+                        </div>
+
+                        <div className="flex justify-center mt-2">
+                            <button
+                                onClick={() => toggleAutoMode(!isAutoMode)}
+                                className={`px-8 py-3 rounded-full font-bold transition flex items-center gap-3 border ${isAutoMode ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.5)]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}
+                            >
+                                <span className={`w-3 h-3 rounded-full ${isAutoMode ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`}></span>
+                                {isAutoMode ? "Auto-Advance: ON" : "Enable Auto-Advance"}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="bg-gray-800 p-4 rounded-xl flex items-center justify-center text-gray-400 text-center">

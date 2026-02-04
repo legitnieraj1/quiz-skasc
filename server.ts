@@ -160,6 +160,61 @@ app.prepare().then(() => {
             }
         });
 
+        socket.on("toggle_auto_mode", ({ code, enabled }) => {
+            const room = gameManager.getRoom(code);
+            if (room && room.hostId === socket.id) {
+                gameManager.setAutoAdvance(code, enabled);
+                // If enabling while active, should we trigger? 
+                // It's safer to wait for next manual action OR trigger if we know where we are.
+                // For now, it just sets the flag for subsequent questions.
+                // Actually the user wants "when the timer ends... it should move". 
+                // If we toggle ON mid-question, we should schedule the END of this question.
+                if (enabled && room.state === "ACTIVE" && room.startTime) {
+                    const currentQ = room.questions[room.currentQuestionIndex];
+                    const elapsed = Date.now() - room.startTime;
+                    const remaining = (currentQ.timer * 1000) - elapsed;
+
+                    if (remaining > 0) {
+                        scheduleAutoNext(code, remaining + 5000); // Timer + 5s buffer
+                    } else {
+                        // Already past time, just trigger soon
+                        scheduleAutoNext(code, 5000);
+                    }
+                }
+            }
+        });
+
+        function scheduleAutoNext(code: string, delay: number) {
+            gameManager.scheduleNextQuestion(code, delay, () => {
+                const room = gameManager.getRoom(code);
+                if (!room || room.state === "ENDED") return;
+
+                // Logic: 
+                // 1. Reveal Leaderboard? (Optional intermediate state)
+                // 2. Move to Next Question
+
+                // To keep it simple per request "automatically move to next question":
+                // We call nextQuestion directly.
+
+                gameManager.nextQuestion(code);
+                if ((room.state as string) === "ENDED") {
+                    const playersList = getLeaderboardData(room);
+                    io.to(code).emit("game_ended", {
+                        players: playersList,
+                        currentQuestionTotal: room.questions.length,
+                        currentQuestionIndex: room.questions.length
+                    });
+                } else {
+                    io.to(code).emit("new_question", room.questions[room.currentQuestionIndex]);
+                    io.to(room.hostId).emit("auto_progress_update", { index: room.currentQuestionIndex }); // Opt update for admin
+
+                    // Schedule NEXT loop
+                    const nextQ = room.questions[room.currentQuestionIndex];
+                    scheduleAutoNext(code, (nextQ.timer * 1000) + 5000); // 5s buffer between questions
+                }
+            });
+        }
+
         socket.on("next_question", ({ code }) => {
             console.log(`Received next_question for ${code} from ${socket.id}`);
             const room = gameManager.getRoom(code);
@@ -167,8 +222,13 @@ app.prepare().then(() => {
                 if (room.hostId !== socket.id) {
                     console.warn(`Host mismatch for next_question. Allowed for debug.`);
                 }
+
+                // If manual click, we clear any pending auto timer (handled in gameManager.nextQuestion)
+                // but if auto-mode IS active, we need to schedule the NEXT one.
+
                 gameManager.nextQuestion(code);
-                if (room.state === "ENDED") {
+
+                if ((room.state as string) === "ENDED") {
                     // Send FINAL ranked results
                     const playersList = getLeaderboardData(room);
                     io.to(code).emit("game_ended", {
@@ -178,6 +238,11 @@ app.prepare().then(() => {
                     });
                 } else {
                     io.to(code).emit("new_question", room.questions[room.currentQuestionIndex]);
+
+                    if (room.autoAdvance) {
+                        const nextQ = room.questions[room.currentQuestionIndex];
+                        scheduleAutoNext(code, (nextQ.timer * 1000) + 5000);
+                    }
                 }
             }
         });
