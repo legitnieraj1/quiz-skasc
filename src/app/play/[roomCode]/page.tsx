@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { socket } from "@/lib/socket";
 import { useParams } from "next/navigation";
 import { LeaderboardView } from "@/components/game/leaderboard-view";
+import { MalpracticeScreen } from "@/components/game/malpractice-screen";
 
 export default function UserPage() {
     const { roomCode } = useParams();
@@ -14,7 +15,7 @@ export default function UserPage() {
     const [timeLeft, setTimeLeft] = useState(0);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
     const [error, setError] = useState("");
-    const [warning, setWarning] = useState("");
+    const [isMalpractice, setIsMalpractice] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
@@ -54,17 +55,29 @@ export default function UserPage() {
 
         const handleVisibilityChange = () => {
             if (document.hidden && gameState === "ACTIVE") {
-                setWarning("DO NOT EXIT! You may be disqualified.");
+                setIsMalpractice(true);
+                // Optional: Notify server
+                socket.emit("malpractice_detected", { code: roomCode });
+            }
+        };
+
+        const handleBlur = () => {
+            if (gameState === "ACTIVE") {
+                setIsMalpractice(true);
+                socket.emit("malpractice_detected", { code: roomCode });
             }
         };
 
         document.addEventListener("visibilitychange", handleVisibilityChange);
+        window.addEventListener("blur", handleBlur);
 
         return () => {
             socket.off("new_question", onNewQuestion);
             socket.off("leaderboard_reveal", onLeaderboardReveal);
             socket.off("game_ended", onGameEnded);
+
             document.removeEventListener("visibilitychange", handleVisibilityChange);
+            window.removeEventListener("blur", handleBlur);
             if (timerRef.current) clearInterval(timerRef.current);
             socket.disconnect();
         };
@@ -148,6 +161,10 @@ export default function UserPage() {
         );
     }
 
+    if (isMalpractice) {
+        return <MalpracticeScreen />;
+    }
+
     // Render Logic
     if (gameState === "LEADERBOARD" && currentQuestion) { // Helper hack: currentQuestion might be stale or part of data
         // Actually currentQuestion state might not matter for Leaderboard view, but we use the one passed in event
@@ -180,11 +197,6 @@ export default function UserPage() {
 
     return (
         <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 relative overflow-hidden">
-            {warning && (
-                <div className="absolute top-0 left-0 w-full bg-red-600 text-white p-2 text-center animate-pulse z-50">
-                    {warning}
-                </div>
-            )}
 
             {gameState === "WAITING" && (
                 <div className="text-center animate-pulse">
