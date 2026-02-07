@@ -18,6 +18,23 @@ export default function UserPage() {
     const [isMalpractice, setIsMalpractice] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Persistence on mount
+    useEffect(() => {
+        if (localStorage.getItem(`malpractice-${roomCode}`) === "true") {
+            setIsMalpractice(true);
+        }
+    }, [roomCode]);
+
+    const setMalpractice = () => {
+        setIsMalpractice(true);
+        localStorage.setItem(`malpractice-${roomCode}`, "true");
+        if (socket.connected) {
+            socket.emit("malpractice_detected", { code: roomCode });
+        }
+    };
+
+
+
     useEffect(() => {
         socket.connect();
 
@@ -54,34 +71,40 @@ export default function UserPage() {
         socket.on("game_ended", onGameEnded);
 
         const handleVisibilityChange = () => {
-            if (document.hidden && gameState === "ACTIVE") {
-                setIsMalpractice(true);
-                // Optional: Notify server
-                socket.emit("malpractice_detected", { code: roomCode });
-            }
+            // Keep empty or remove entirely from here, moving to new effect
         };
-
-        const handleBlur = () => {
-            if (gameState === "ACTIVE") {
-                setIsMalpractice(true);
-                socket.emit("malpractice_detected", { code: roomCode });
-            }
-        };
-
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-        window.addEventListener("blur", handleBlur);
-
+        // Removing old listeners from this effect scope
         return () => {
             socket.off("new_question", onNewQuestion);
             socket.off("leaderboard_reveal", onLeaderboardReveal);
             socket.off("game_ended", onGameEnded);
-
-            document.removeEventListener("visibilitychange", handleVisibilityChange);
-            window.removeEventListener("blur", handleBlur);
             if (timerRef.current) clearInterval(timerRef.current);
             socket.disconnect();
         };
-    }, [roomCode]); // Removed gameState to prevent socket disconnect/reconnect cycle on state change
+    }, [roomCode]);
+
+    // Malpractice Detection Effect
+    useEffect(() => {
+        if (gameState !== "ACTIVE") return;
+
+        const handleViolation = () => {
+            setMalpractice();
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.hidden) handleViolation();
+        };
+
+        window.addEventListener("blur", handleViolation);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        window.addEventListener("pagehide", handleViolation);
+
+        return () => {
+            window.removeEventListener("blur", handleViolation);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            window.removeEventListener("pagehide", handleViolation);
+        };
+    }, [gameState, roomCode]);
 
     // Prevent accidental navigation
     useEffect(() => {
