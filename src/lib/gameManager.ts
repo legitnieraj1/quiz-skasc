@@ -88,7 +88,7 @@ class GameManager {
                     text: q.text,
                     options: JSON.parse(q.options as string),
                     correctAnswer: q.correctAnswer,
-                    timer: 20, // Default or store in DB? DB doesn't have timer/points in schema yet!
+                    timer: 15, // Default or store in DB? DB doesn't have timer/points in schema yet!
                     points: 100
                 })),
                 currentQuestionIndex: -1,

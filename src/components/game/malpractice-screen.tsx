@@ -12,10 +12,10 @@ export function MalpracticeScreen() {
             <div className="relative w-full max-w-sm aspect-square mb-8 p-1 bg-white/10 rounded-2xl border-4 border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.5)] overflow-hidden">
                 <Image
                     src="/MALPRACTICE.png"
-                    alt="Get Out Meme"
+                    alt="YOU ARE DISQUALIFIED LIL BRO"
                     fill
                     className="object-contain rounded-xl"
-                    priority
+                priority
                 />
             </div>
 

@@ -18,7 +18,7 @@ export default function AdminPage() {
         text: "",
         options: ["", "", "", ""],
         correctAnswer: "",
-        timer: 20,
+        timer: 15,
         points: 100
     });
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -133,7 +133,7 @@ export default function AdminPage() {
 
         setQuestions(updated);
         socket.emit("admin_update_questions", { code: roomCode, questions: updated });
-        setNewQuestion({ text: "", options: ["", "", "", ""], correctAnswer: "", timer: 20, points: 100 });
+        setNewQuestion({ text: "", options: ["", "", "", ""], correctAnswer: "", timer: 15, points: 100 });
         setEditingIndex(null);
         setIsEditing(false);
     };
@@ -171,7 +171,7 @@ export default function AdminPage() {
                     text: q.text,
                     options: q.options,
                     correctAnswer: q.correctAnswer,
-                    timer: 20, // Default timer
+                    timer: 15, // Default timer
                     points: 100 // Default points
                 }));
 
